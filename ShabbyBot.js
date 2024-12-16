@@ -10,16 +10,25 @@ const bot = new TelegramBot("7569058734:AAHzloldM_k7clVkRXik-7lWsXs5uRAP_oc", {
 });
 const userMessages = {}; // Объект для хранения времени сообщений пользователей
 const userFrozen = {}; // Объект для отслеживания "замороженных" пользователей
-const SPAM_LIMIT = 1; // Лимит сообщений
-const TIME_LIMIT = 2 * 1000; // Время в миллисекундах (5 секунд)
-const FREEZE_TIME = 3 * 1000; // Время заморозки в миллисекундах (5 секунд)
+const SPAM_LIMIT = 2; // Лимит сообщений
+const TIME_LIMIT = 2 * 1000; // Время в миллисекундах (1 секунд)
+const FREEZE_TIME = 4 * 1000; // Время заморозки в миллисекундах (4 секунд)
+const userGroups = {}; // Объект для хранения групп пользователей
 
 // ================================= Статичесие кнопки =================================
+
+// prettier-ignore
 const Staticoptions = {
   reply_markup: {
-    keyboard: [["Чи на часі Зара пара?"], ["Тест Всіх пар дня тижня"]],
+    keyboard: [["Чи на часі Зара пара?", "Тест Всіх пар дня тижня"],],
   },
 };
+const StopButton = {
+  reply_markup: {
+    keyboard: [["Стоп!"]],
+  },
+};
+
 const Day_coptions = {
   reply_markup: {
     inline_keyboard: [
@@ -34,6 +43,18 @@ const Day_coptions = {
   },
 };
 
+const groupOptions = {
+  reply_markup: {
+    // prettier-ignore
+
+    inline_keyboard: [
+      [{ text: "КС11", callback_data: `КС11` },{ text: "КС12", callback_data: `КС12` },{ text: "КС13", callback_data: `КС13` }, { text: "КС14", callback_data: `КС14` }],
+      [{ text: "КБ11", callback_data: `КБ11` },{ text: "КБ12", callback_data: `КБ12` }],
+      [{ text: "КУ11", callback_data: `КУ11` }],
+      [{ text: "КІ11", callback_data: `КІ11` }],
+    ],
+  },
+};
 // ================================= Статичесие кнопки ==================================
 // Вебсервер для UptimeRobot
 const app = express();
@@ -48,8 +69,8 @@ app.listen(PORT, () => {
 });
 
 //================================== Обработка-Команд ===================================
-bot.onText(/\/start/, (msg) => {
-  return bot.sendMessage(msg.chat.id, `Привет`, Staticoptions);
+bot.onText(/\/start/, async (msg) => {
+  return bot.sendMessage(msg.chat.id, "Привіт! ", Staticoptions);
 });
 bot.onText(/\/info/, (msg) => {
   return bot.sendMessage(
@@ -57,10 +78,11 @@ bot.onText(/\/info/, (msg) => {
     "Я Раб Ленивого. По приказу говорю какая сейчас пара в гуппе КУ-11 Основываясь на информации что дана нам в Таблице на гугл диске "
   );
 });
+
 //================================== Обработка-Команд ===================================
 
 bot.on("message", async (msg) => {
-  console.log(msg);
+  // console.log(msg);
   const userId = msg.from.id;
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -72,31 +94,42 @@ bot.on("message", async (msg) => {
   const timeNOW_hours = datenow.getHours(); // Время в часах
   const totalMinutesNow = timeNOW_hours * 60 + timeNOW_minutes;
   // Если пользователь "заморожен", не реагируем на его сообщение
-  if (userFrozen[userId]) {
+  if (await userFrozen[userId]) {
     return;
   }
-
-  // Добавляем время нового сообщения
-  if (!userMessages[userId]) {
-    userMessages[userId] = [];
-  }
-  userMessages[userId].push(Date.now());
-
-  if (checkSpam(userId)) {
+  if (await checkSpam(userId)) {
     // Если спам, отправляем сообщение и замораживаем пользователя
-    bot.sendMessage(userId, "Генерую Відповідь...");
-    freezeUser(userId);
+    await bot.sendMessage(chatId, `Досить спамити козаче..`);
+    await freezeUser(userId, chatId);
+    await wait(3000);
+    return unfreezeUser(userId, chatId);
   }
   console.log(
     `timeNOW_hours :${timeNOW_hours} timeNOW_minutes :${timeNOW_minutes}`
   );
 
+  await sendMessageWithTyping(chatId, text);
+
+  // Если у пользователя нет сохраненной группы, запрашиваем её
+  await takeGroup(userId, userGroups, chatId);
+
+  // Добавляем время нового сообщения
+  if (await !userMessages[userId]) {
+    userMessages[userId] = [];
+  }
+  userMessages[userId].push(Date.now());
+
   //================================== функции статических кнопок ==================================
   if (text === "Чи на часі Зара пара?") {
-    HowPair(chatId, dayOfWeek, timeNOW_hours, timeNOW_minutes);
+    await HowPair(chatId, dayOfWeek, timeNOW_hours, timeNOW_minutes, userId);
   }
   if (text === "Тест Всіх пар дня тижня") {
-    HowPairTEST(dayOfWeek, chatId);
+    // freezeUser(userId, chatId);
+    await HowPairTEST(dayOfWeek, chatId, userId);
+  }
+  if (text === "Стоп!") {
+    unfreezeUser(userId, chatId);
+    return bot.sendMessage(chatId, `Ви розморожені.`);
   }
 });
 //================================== функции статических кнопок ==================================
@@ -198,6 +231,7 @@ function findCellWithWord(
   startCol = 0,
   endCol = data.length
 ) {
+  word += "";
   for (let col = startCol; col < endCol; col++) {
     for (let row = startRow; row < endRow; row++) {
       if (
@@ -208,7 +242,7 @@ function findCellWithWord(
           .toLowerCase()
           .includes(word.toLowerCase())
       ) {
-        return { row, col };
+        return { row, col, word };
       }
     }
   }
@@ -369,13 +403,18 @@ async function Pair_isit(
   timeNOW_hours,
   timeNOW_minutes,
   sheet,
-  days
+  days,
+  userId
 ) {
+  const groupsPromise = takeGroup(userId, userGroups, chatId);
+  const groups = await groupsPromise; // Используем await для получения значения из Promise
+  console.log(groups); // Теперь groups содержит значение 'КУ11'
   let { getpair1 } = getNextPair(timeNOW_hours, timeNOW_minutes);
   let { otvet } = getNextPair(timeNOW_hours, timeNOW_minutes);
   let pair;
   let J = 0;
-  let group = findCellWithWord(data, "КУ11");
+  let group = findCellWithWord(data, groups);
+  console.log(group);
   const excelRangegroup = convertCellToExcelAddress(group);
   const mergedRangegroup = findMergedRange(sheet, excelRangegroup);
   day = findCellWithWord(data, days + "");
@@ -410,7 +449,7 @@ async function Pair_isit(
   console.log("Номер нашей пары:", getNextPair(timeNOW_hours, timeNOW_minutes));
   const mergedRange_pair = findMergedRange(sheet, excelRange_pair);
   console.log(`Это ячейка пары: `, excelRange_pair, mergedRange_pair);
-  console.log(`Это ячейка группы:`, excelRangegroup, group);
+  console.log(`Это ячейка группы:`, excelRangegroup, group.col);
   console.log(
     "Диапазон строк номера Пары которые мы читаем:",
     mergedRange_pair.rowStart,
@@ -420,8 +459,8 @@ async function Pair_isit(
     filePath,
     mergedRange_pair.rowStart,
     mergedRange_pair.rowEnd,
-    7,
-    7
+    group.col + 1,
+    group.col + 1
   );
   console.log(
     `(Количество столбцов с содержимым)values.length:`,
@@ -438,15 +477,15 @@ async function Pair_isit(
     filePath,
     mergedRange_pair.rowStart,
     mergedRange_pair.rowEnd,
-    7,
-    7
+    group.col + 1,
+    group.col + 1
   );
 
-  console.log("Столбец группы:", 7, `\n ${readRange}`);
+  console.log("Столбец группы:", group.col + 1 + "", `\n ${readRange}`);
   console.log(`Текст пары номер ${getpair1}: ${formattedText}`);
   await bot.sendMessage(
     chatId,
-    `${days + ""}\n\t\t${timeNOW_hours}:${timeNOW_minutes} `
+    `${days + ""}\n\t\t${timeNOW_hours}:${timeNOW_minutes} \n ${group.word}`
   );
   if (values.length === 0) {
     return bot.sendMessage(chatId, `${otvet} \nПари не буде.`);
@@ -463,7 +502,8 @@ async function Pair_is(
   data,
   timeNOW_hours,
   timeNOW_minutes,
-  sheet
+  sheet,
+  userId
 ) {
   switch (dayOfWeek) {
     case 1:
@@ -474,7 +514,8 @@ async function Pair_is(
         timeNOW_hours,
         timeNOW_minutes,
         sheet,
-        "Понеділок"
+        "Понеділок",
+        userId
       );
       break;
     case 2:
@@ -485,7 +526,8 @@ async function Pair_is(
         timeNOW_hours,
         timeNOW_minutes,
         sheet,
-        "Вівторок"
+        "Вівторок",
+        userId
       );
       break;
     case 3:
@@ -496,7 +538,8 @@ async function Pair_is(
         timeNOW_hours,
         timeNOW_minutes,
         sheet,
-        "Середа"
+        "Середа",
+        userId
       );
       break;
     case 4:
@@ -507,7 +550,8 @@ async function Pair_is(
         timeNOW_hours,
         timeNOW_minutes,
         sheet,
-        "Четвер"
+        "Четвер",
+        userId
       );
       break;
     case 5:
@@ -518,7 +562,8 @@ async function Pair_is(
         timeNOW_hours,
         timeNOW_minutes,
         sheet,
-        "П'ятниця"
+        "П'ятниця",
+        userId
       );
       break;
     default:
@@ -534,12 +579,14 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+//================================== функции статических кнопок ==================================
+
 async function HowPair(
   chatId,
   dayOfWeek,
-
   timeNOW_hours,
-  timeNOW_minutes
+  timeNOW_minutes,
+  userId
 ) {
   try {
     // Загружаем Excel-файл по ссылке
@@ -572,7 +619,8 @@ async function HowPair(
       data,
       timeNOW_hours,
       timeNOW_minutes,
-      sheet
+      sheet,
+      userId
     );
 
     // Получаем данные об объединении ячеек
@@ -611,13 +659,7 @@ async function HowPair(
 }
 
 // функція кнопки "Тест Всіх пар дня тижня"
-async function HowPairTEST(
-  dayOfWeek,
-
-  chatId
-) {
-  //================================== функции статических кнопок ==================================
-
+async function HowPairTEST(dayOfWeek, chatId, userId, text) {
   try {
     // Загружаем Excel-файл по ссылке
     const response = await axios({
@@ -642,20 +684,30 @@ async function HowPairTEST(
     console.log("Данные из таблицы (учитывая объединения):");
     bot.sendMessage(chatId, `Який день тижня хочите протестити?`, Day_coptions);
 
-    dayOfWeek = await waitForButtonPress(bot);
-    bot.sendMessage(chatId, `ПЇХАЛИ`);
+    dayOfWeek = await waitForButtonPressINT(bot, chatId);
+    console.log(dayOfWeek);
+    if (dayOfWeek === 6) {
+      return bot.sendMessage(
+        chatId,
+        `Функція визначення пар в суботу ще не написана..`
+      );
+    } else if (dayOfWeek === 0) {
+      return bot.sendMessage(chatId, `По неділям ми не вчимось!`);
+    }
+    bot.sendMessage(chatId, `ПЇХАЛИ`, StopButton);
 
     for (let h = 0; h < 23; h++) {
       for (let m = 0; m < 60; m += 10) {
+        if (text === "Стоп!") {
+          break;
+        }
         console.log(`h = ${h}\nm = ${m}\n`);
 
-        await Pair_is(chatId, dayOfWeek, data, h, m, sheet);
+        await Pair_is(chatId, dayOfWeek, data, h, m, sheet, userId);
         await delay(1000);
       }
     }
-
-    // Pair_is(chatId, dayOfWeek, data, timeNOW_hours1, timeNOW_minutes1, sheet);
-
+    Staticoptions;
     // Получаем данные об объединении ячеек
     const merges = sheet["!merges"] || [];
 
@@ -691,17 +743,38 @@ async function HowPairTEST(
   }
 }
 
-const waitForButtonPress = (bot) => {
-  return new Promise((resolve) => {
-    bot.once("callback_query", (callbackQuery) => {
-      dayOfWeek = parseInt(callbackQuery.data, 10);
-
-      // Повідомляємо Promise, що кнопка натиснута
-      resolve(dayOfWeek);
+// Функция для ожидания нажатия кнопки
+function waitForButtonPress(bot, chatId) {
+  return new Promise((resolve, reject) => {
+    bot.once("callback_query", (query) => {
+      if (
+        query.message &&
+        query.message.chat &&
+        query.message.chat.id === chatId
+      ) {
+        if (query.data) {
+          resolve(query.data); // Возвращаем данные кнопки
+        } else {
+          reject(new Error("No data in callback query"));
+        }
+      } else {
+        reject(new Error("Callback query from different chat"));
+      }
     });
   });
-};
+}
 
+function waitForButtonPressINT(bot, chatId) {
+  return new Promise((resolve) => {
+    bot.once("callback_query", (query) => {
+      if (query.message.chat.id === chatId) {
+        resolve(parseInt(query.data, 10)); // Преобразуем данные кнопки в целое число
+      }
+    });
+  });
+}
+
+// функція антимпам
 function checkSpam(userId) {
   const currentTime = Date.now();
 
@@ -720,9 +793,62 @@ function checkSpam(userId) {
   return false;
 }
 
-function freezeUser(userId) {
+// Функція заморозки користувача
+function freezeUser(userId, chatId) {
   userFrozen[userId] = Date.now();
-  setTimeout(() => {
-    delete userFrozen[userId]; // Разморозка после 10 секунд
-  }, FREEZE_TIME);
+
+  console.log(`Користувач ${userId} заморожений`);
+}
+
+// Функція для зняття заморозки користувача вручну
+function unfreezeUser(userId) {
+  if (userFrozen[userId]) {
+    delete userFrozen[userId];
+    console.log(`Користувач ${userId} розморожений вручну`);
+  } else {
+    console.log(`Користувач ${userId} не був заморожений`);
+  }
+}
+async function takeGroup(userId, userGroups, chatId) {
+  if (!userGroups[userId]) {
+    freezeUser(userId, chatId);
+    bot.sendMessage(chatId, "Будьласка обери свою групу:", groupOptions);
+    const groups = await waitForButtonPress(bot, chatId);
+    userGroups[userId] = groups; // Сохраняем группу пользователя
+    await bot.sendMessage(chatId, `Ваша группа сохранена: ${groups}`);
+    unfreezeUser(userId);
+
+    return groups;
+  } else {
+    return userGroups[userId];
+  }
+}
+
+// функция таймера
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Функция для отправки сообщения и удаления "Генерую Відповідь..."
+async function sendMessageWithTyping(chatId, text, userId) {
+  if (userFrozen[userId]) {
+    return;
+  }
+  if (await checkSpam(userId)) {
+    // Если спам, отправляем сообщение и замораживаем пользователя
+    await bot.sendMessage(chatId, `Досить спамити козаче..`);
+    await freezeUser(userId, chatId);
+    await wait(5000);
+    return unfreezeUser(userId, chatId);
+  }
+  if (userFrozen[userId]) {
+    return;
+  }
+  // Отправляем сообщение "Генерую Відповідь..."
+  const typingMessage = await bot.sendMessage(chatId, "Генерую Відповідь...");
+  await freezeUser(userId, chatId);
+  await wait(2000);
+  // Удаляем сообщение "Генерую Відповідь..."
+  await bot.deleteMessage(chatId, typingMessage.message_id);
+  return unfreezeUser(userId, chatId);
 }
