@@ -6,10 +6,21 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
+  "author": "DmitriyKyrychenko",
   "license": "ISC",
-  "description": "",
+  "description": "��#\u0000 \u0000S\u0000h\u0000a\u0000b\u0000b\u0000y\u0000B\u0000o\u0000t\u0000\r\u0000 \u0000#\u0000 \u0000S\u0000h\u0000a\u0000b\u0000b\u0000y\u0000B\u0000o\u0000t\u0000\r\u0000 \u0000",
   "dependencies": {
-    "node-telegram-bot-api": "^0.66.0"
-  }
+    "axios": "^1.7.9",
+    "express": "^4.21.2",
+    "node-telegram-bot-api": "^0.66.0",
+    "xlsx": "^0.18.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuniorSenior2213/ShabbyBot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JuniorSenior2213/ShabbyBot/issues"
+  },
+  "homepage": "https://github.com/JuniorSenior2213/ShabbyBot#readme"
 }

@@ -2,9 +2,8 @@ const TelegramBot = require("node-telegram-bot-api");
 const axios = require("axios");
 const XLSX = require("xlsx");
 const fs = require("fs");
-const { google } = require("googleapis");
-const { healthcare } = require("googleapis/build/src/apis/healthcare");
 const filePath = "./.xlsx";
+const express = require("express");
 const bot = new TelegramBot("7569058734:AAHzloldM_k7clVkRXik-7lWsXs5uRAP_oc", {
   polling: true,
   baseApiUrl: "https://api.telegram.org",
@@ -31,7 +30,17 @@ const Day_coptions = {
 };
 
 // ================================= Статичесие кнопки ==================================
+// Вебсервер для UptimeRobot
+const app = express();
 
+app.get("/", (req, res) => {
+  res.send("Бот працює!");
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Сервер запущено на порту ${PORT}`);
+});
 //================================== Обработка-Команд ===================================
 bot.onText(/\/start/, (msg) => {
   return bot.sendMessage(msg.chat.id, `Привет`, Staticoptions);
