@@ -8,6 +8,11 @@ const bot = new TelegramBot("7569058734:AAHzloldM_k7clVkRXik-7lWsXs5uRAP_oc", {
   polling: true,
   baseApiUrl: "https://api.telegram.org",
 });
+const userMessages = {}; // Объект для хранения времени сообщений пользователей
+const userFrozen = {}; // Объект для отслеживания "замороженных" пользователей
+const SPAM_LIMIT = 1; // Лимит сообщений
+const TIME_LIMIT = 2 * 1000; // Время в миллисекундах (5 секунд)
+const FREEZE_TIME = 3 * 1000; // Время заморозки в миллисекундах (5 секунд)
 
 // ================================= Статичесие кнопки =================================
 const Staticoptions = {
@@ -41,6 +46,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Сервер запущено на порту ${PORT}`);
 });
+
 //================================== Обработка-Команд ===================================
 bot.onText(/\/start/, (msg) => {
   return bot.sendMessage(msg.chat.id, `Привет`, Staticoptions);
@@ -54,6 +60,8 @@ bot.onText(/\/info/, (msg) => {
 //================================== Обработка-Команд ===================================
 
 bot.on("message", async (msg) => {
+  console.log(msg);
+  const userId = msg.from.id;
   const chatId = msg.chat.id;
   const text = msg.text;
   const date = msg.date;
@@ -63,6 +71,22 @@ bot.on("message", async (msg) => {
   const timeNOW_minutes = datenow.getMinutes(); // время в минутах
   const timeNOW_hours = datenow.getHours(); // Время в часах
   const totalMinutesNow = timeNOW_hours * 60 + timeNOW_minutes;
+  // Если пользователь "заморожен", не реагируем на его сообщение
+  if (userFrozen[userId]) {
+    return;
+  }
+
+  // Добавляем время нового сообщения
+  if (!userMessages[userId]) {
+    userMessages[userId] = [];
+  }
+  userMessages[userId].push(Date.now());
+
+  if (checkSpam(userId)) {
+    // Если спам, отправляем сообщение и замораживаем пользователя
+    bot.sendMessage(userId, "Генерую Відповідь...");
+    freezeUser(userId);
+  }
   console.log(
     `timeNOW_hours :${timeNOW_hours} timeNOW_minutes :${timeNOW_minutes}`
   );
@@ -677,4 +701,28 @@ const waitForButtonPress = (bot) => {
     });
   });
 };
-//============================================= Функции ==============================================
+
+function checkSpam(userId) {
+  const currentTime = Date.now();
+
+  // Очистка старых сообщений
+  if (userMessages[userId]) {
+    userMessages[userId] = userMessages[userId].filter(
+      (timestamp) => currentTime - timestamp < TIME_LIMIT
+    );
+  }
+
+  // Проверка на спам
+  if (userMessages[userId] && userMessages[userId].length >= SPAM_LIMIT) {
+    return true;
+  }
+
+  return false;
+}
+
+function freezeUser(userId) {
+  userFrozen[userId] = Date.now();
+  setTimeout(() => {
+    delete userFrozen[userId]; // Разморозка после 10 секунд
+  }, FREEZE_TIME);
+}
