@@ -3,7 +3,14 @@ const axios = require("axios");
 const XLSX = require("xlsx");
 const fs = require("fs");
 const filePath = "./.xlsx";
+const path = require("path"); // Для удобной работы с путями
 const express = require("express");
+const CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1ObGU1tzWNYOYE-F_wLlvMflVzw-aG3YL/export?format=csv"; // Ссылка на CSV-файл
+const FILE_PATH = path.resolve(__dirname, "local_data.txt"); // Локальный файл для хранения данных
+const url =
+  "https://docs.google.com/spreadsheets/d/1tr1CAnNUpXX9YvaJmkUakn1qj2jNpQLY/export?format=xlsx&gid=133878880";
+
 const bot = new TelegramBot("7569058734:AAHzloldM_k7clVkRXik-7lWsXs5uRAP_oc", {
   polling: true,
   baseApiUrl: "https://api.telegram.org",
@@ -591,21 +598,25 @@ async function HowPair(
   try {
     // Загружаем Excel-файл по ссылке
     const response = await axios({
-      url: "https://docs.google.com/spreadsheets/d/1ObGU1tzWNYOYE-F_wLlvMflVzw-aG3YL/export?format=xlsx&gid=961061976",
       method: "GET",
       responseType: "arraybuffer",
+      url: "https://docs.google.com/spreadsheets/d/1tr1CAnNUpXX9YvaJmkUakn1qj2jNpQLY/export?format=xlsx&gid=133878880",
     });
-    // Сохраняем файл временно
-    fs.writeFileSync(filePath, response.data);
 
-    // Читаем файл
+    fetchCSVData()
+      .then((reserch) => {
+        if (reserch) {
+          console.log("Данные не изменились");
+        } else {
+          console.log("Данные изменились, обновляем файл...");
+          checkAndDownloadFile(url, filePath);
+        }
+      })
+      .catch((error) => console.error("Ошибка: чтения либо загрузки", error));
     const workbook = XLSX.readFile(filePath);
-
-    // Первый лист
+    // Дальнейшая обработка файла
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-
-    // Преобразуем в массив массивов
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     // Выводим данные в лог с проверкой объединенных ячеек
@@ -613,6 +624,8 @@ async function HowPair(
     console.log(
       `timeNOW_hours :${timeNOW_hours} timeNOW_minutes :${timeNOW_minutes}`
     );
+
+    dayOfWeek = 1;
     await Pair_is(
       chatId,
       dayOfWeek,
@@ -648,7 +661,6 @@ async function HowPair(
       return false;
     }
     // Удаляем временный файл
-    return fs.unlinkSync(filePath);
   } catch (error) {
     console.error("Ошибка при скачивании или обработке файла:", error);
     bot.sendMessage(
@@ -667,17 +679,25 @@ async function HowPairTEST(dayOfWeek, chatId, userId, text) {
       method: "GET",
       responseType: "arraybuffer",
     });
-    // Сохраняем файл временно
-    fs.writeFileSync(filePath, response.data);
+    const fileUrl =
+      "https://docs.google.com/spreadsheets/d/1tr1CAnNUpXX9YvaJmkUakn1qj2jNpQLY/export?format=xlsx&gid=133878880"; // Замените на вашу ссылку
+    const filePath = "./file.xlsx"; // Замените на ваш путь к файлу
 
-    // Читаем файл
+    await fetchCSVData()
+      .then((reserch) => {
+        if (reserch) {
+          console.log("Данные не изменились");
+        } else {
+          console.log("Данные изменились, обновляем файл...");
+          checkAndDownloadFile(url, filePath);
+        }
+      })
+      .catch((error) => console.error("Ошибка: чтения либо загрузки", error));
     const workbook = XLSX.readFile(filePath);
 
-    // Первый лист
+    // Дальнейшая обработка файла
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-
-    // Преобразуем в массив массивов
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     // Выводим данные в лог с проверкой объединенных ячеек
@@ -851,4 +871,52 @@ async function sendMessageWithTyping(chatId, text, userId) {
   // Удаляем сообщение "Генерую Відповідь..."
   await bot.deleteMessage(chatId, typingMessage.message_id);
   return unfreezeUser(userId, chatId);
+}
+
+async function fetchCSVData() {
+  try {
+    const response = await axios.get(CSV_URL, { responseType: "arraybuffer" }); // Загружаем CSV как байты
+    const csvData = response.data;
+    handleLocalFile(csvData);
+  } catch (error) {
+    console.error("Ошибка при получении данных:", error);
+  }
+}
+
+async function handleLocalFile(csvData) {
+  if (fs.existsSync(FILE_PATH)) {
+    // Файл существует, читаем его байты
+    const localData = fs.readFileSync(FILE_PATH);
+
+    if (!Buffer.compare(localData, csvData)) {
+      console.log("Данные совпадают. Файл не обновлялся.");
+      return true; // Данные не изменились
+    } else {
+      console.log("Данные отличаются. Перезаписываем файл...");
+      fs.writeFileSync(FILE_PATH, csvData);
+      return false; // Данные изменились
+    }
+  } else {
+    // Файла нет, создаем новый
+    console.log("Файл не найден. Создаем новый файл...");
+    fs.writeFileSync(FILE_PATH, csvData);
+    return false; // Файл был создан
+  }
+}
+
+async function checkAndDownloadFile(url, filePath) {
+  // Проверка существования локального файла
+  const reserch = fetchCSVData();
+  if (!fs.existsSync(filePath) || !reserch) {
+    console.log("Файл не найден или данные изменились, скачиваем...");
+    const response = await axios.get(url, { responseType: "arraybuffer" });
+    fs.writeFileSync(filePath, response.data);
+    console.log("Файл успешно скачан.");
+  } else {
+    console.log("Файл уже существует и актуален.");
+  }
+
+  // Чтение файла
+  const workbook = XLSX.readFile(filePath);
+  return workbook;
 }
